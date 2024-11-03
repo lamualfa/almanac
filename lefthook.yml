@@ -1,0 +1,4 @@
+pre-commit:
+  commands:
+    format:
+      run: pnpm dlx @biomejs/biome format --write .
