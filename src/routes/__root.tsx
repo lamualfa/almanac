@@ -7,15 +7,15 @@ import { Outlet, createRootRoute } from '@tanstack/react-router'
 import { Fragment } from 'react/jsx-runtime'
 
 export const Route = createRootRoute({
-  component: RootComponent,
+	component: RootComponent,
 })
 
 function RootComponent() {
-  return (
-    <Fragment>
-      <Outlet />
-      <TanStackRouterDevtools initialIsOpen={false} />
-      <ReactQueryDevtools initialIsOpen={false} />
-    </Fragment>
-  )
+	return (
+		<Fragment>
+			<Outlet />
+			<TanStackRouterDevtools initialIsOpen={false} />
+			<ReactQueryDevtools initialIsOpen={false} />
+		</Fragment>
+	)
 }
