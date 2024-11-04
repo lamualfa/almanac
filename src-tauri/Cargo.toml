@@ -32,3 +32,6 @@ blake3 = "1.5.4"
 tauri-plugin-shell = "2"
 anyhow = "1.0.91"
 serde_with = "3.11.0"
+
+[profile.release]
+lto = true
