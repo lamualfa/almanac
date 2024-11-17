@@ -41,20 +41,16 @@ impl FsId {
     }
 
     fn get_total_views(&self, app_handle: &AppHandle) -> Option<i64> {
-        let store = app_handle.get_default_store();
-        let store_key = self.get_total_views_store_key();
-        let store_value = store.get(store_key)?;
-
-        store_value.as_i64()
+        app_handle
+            .get_default_store()
+            .get(&self.get_total_views_store_key())
+            .and_then(|value| value.as_i64())
     }
 
     fn increase_total_views(&self, app_handle: &AppHandle) -> anyhow::Result<()> {
         let store = app_handle.get_default_store();
         let store_key = self.get_total_views_store_key();
-        let increased_store_value = match store.get(&store_key) {
-            Some(value) => value.as_i64().unwrap_or(0) + 1,
-            None => 1,
-        };
+        let increased_store_value = store.get(&store_key).and_then(|v| v.as_i64()).unwrap_or(0) + 1;
 
         store.set(store_key, increased_store_value);
         store.save().context("Can't update the store!")
@@ -145,10 +141,6 @@ pub trait PathBufMethods {
     fn get_name(&self) -> Option<String>;
     fn get_fs_info(&self, app_handle: &AppHandle) -> anyhow::Result<FsInfo>;
     fn get_fs_detail(&self) -> anyhow::Result<FsDetail>;
-    fn get_file_info(&self, app_handle: &AppHandle) -> anyhow::Result<FileInfo>;
-    fn get_file_detail(&self) -> anyhow::Result<FileDetail>;
-    fn get_folder_info(&self) -> anyhow::Result<FolderInfo>;
-    fn get_folder_detail(&self) -> anyhow::Result<FolderDetail>;
     fn get_mime(&self) -> Option<String>;
     fn get_id(&self) -> FsId;
     fn get_children(&self) -> anyhow::Result<ReadDir>;
@@ -176,14 +168,43 @@ impl PathBufMethods for PathBuf {
 
     fn get_fs_info(&self, app_handle: &AppHandle) -> anyhow::Result<FsInfo> {
         if !self.check_is_exists()? {
-            return Err(anyhow::Error::msg("The path doesn't exists!"));
+            return Err(anyhow::anyhow!("The path doesn't exist!"));
         }
 
         let fs_info = if self.is_file() {
-            let file_info = self.clone().get_file_info(&app_handle)?;
+            let file_info = {
+                let name = self.get_name().context("Can't get the file name!")?;
+                let metadata = self.metadata().ok();
+                let size: Option<i64> = metadata.get_size();
+                let modified_time = metadata.get_modified_time();
+                let id = self.get_id();
+                let total_views = id.get_total_views(app_handle);
+
+                FileInfo {
+                    id,
+                    name,
+                    pathbuf: self.to_owned(),
+                    size,
+                    modified_time,
+                    total_views,
+                }
+            };
+
             FsInfo::File(file_info)
         } else {
-            let folder_info = self.clone().get_folder_info()?;
+            let folder_info = {
+                let id = self.get_id();
+                let name = self
+                    .get_name()
+                    .unwrap_or(self.to_string_lossy().to_string());
+
+                FolderInfo {
+                    id,
+                    name,
+                    pathbuf: self.to_owned(),
+                }
+            };
+
             FsInfo::Folder(folder_info)
         };
 
@@ -196,14 +217,30 @@ impl PathBufMethods for PathBuf {
         }
 
         let fs_detail = if self.is_file() {
-            let file_info = self.clone().get_file_detail().context("  file detail!")?;
-            FsDetail::File(file_info)
+            let file_detail = {
+                let mime = Self::get_mime(&self);
+
+                FileDetail { mime }
+            };
+
+            FsDetail::File(file_detail)
         } else {
-            let folder_info = self
-                .clone()
-                .get_folder_detail()
-                .context("Can't get the folder detail!")?;
-            FsDetail::Folder(folder_info)
+            let folder_detail = {
+                let total_items = {
+                    let entries = self.get_children()?;
+                    let mut total_items: i64 = 0;
+
+                    for _ in entries {
+                        total_items += 1;
+                    }
+
+                    Some(total_items)
+                };
+
+                FolderDetail { total_items }
+            };
+
+            FsDetail::Folder(folder_detail)
         };
 
         Ok(fs_detail)
@@ -229,61 +266,6 @@ impl PathBufMethods for PathBuf {
         let file_type_from_buffer = infer::get(&buffer)?;
 
         Some(file_type_from_buffer.mime_type().to_string())
-    }
-
-    fn get_file_info(&self, app_handle: &AppHandle) -> anyhow::Result<FileInfo> {
-        let name = self.get_name().context("Can't get the file name!")?;
-        let metadata = self.metadata().ok();
-        let size: Option<i64> = metadata.get_size();
-        let modified_time = metadata.get_modified_time();
-        let id = self.get_id();
-        let total_views = id.get_total_views(app_handle);
-        let file_info = FileInfo {
-            id,
-            name,
-            pathbuf: self.to_owned(),
-            size,
-            modified_time,
-            total_views,
-        };
-
-        Ok(file_info)
-    }
-
-    fn get_file_detail(&self) -> anyhow::Result<FileDetail> {
-        let mime = Self::get_mime(&self);
-        let file_detail = FileDetail { mime };
-        Ok(file_detail)
-    }
-
-    fn get_folder_info(&self) -> anyhow::Result<FolderInfo> {
-        let id = self.get_id();
-        let name = self
-            .get_name()
-            .unwrap_or(self.to_string_lossy().to_string());
-        let folder_info = FolderInfo {
-            id,
-            name,
-            pathbuf: self.to_owned(),
-        };
-
-        Ok(folder_info)
-    }
-
-    fn get_folder_detail(&self) -> anyhow::Result<FolderDetail> {
-        let total_items = {
-            let entries = self.get_children()?;
-            let mut total_items: i64 = 0;
-
-            for _ in entries {
-                total_items += 1;
-            }
-
-            Some(total_items)
-        };
-
-        let folder_detail = FolderDetail { total_items };
-        Ok(folder_detail)
     }
 
     fn get_id(&self) -> FsId {
@@ -367,7 +349,7 @@ impl PathBufMethods for PathBuf {
         self.check_is_exists()?;
 
         if !self.is_file() {
-            return Err(anyhow::Error::msg("The path must be a file!"));
+            return Err(anyhow::anyhow!("The path must be a file!"));
         }
 
         let id = self.get_id();
