@@ -6,7 +6,10 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"ignore": ["src/bindings.ts", "src-tauri"]
+		"ignore": [
+			"src/bindings.ts",
+			"src-tauri"
+		]
 	},
 	"formatter": {
 		"enabled": true,
